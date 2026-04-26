@@ -248,17 +248,37 @@ function showTab(name) {
 
 function parseDate(raw) {
   if (!raw) return null;
-  raw = raw.trim();
+  raw = raw.trim().replace(/[^\d\/\-a-zA-Z ,]/g, '');
+  if (!raw) return null;
+  // YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  // M/D/YYYY or MM/DD/YYYY (Google Sheets default US format)
   if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(raw)) {
-    const [mo,da,yr] = raw.split('/');
-    return `${yr}-${mo.padStart(2,'0')}-${da.padStart(2,'0')}`;
+    const parts = raw.split('/');
+    return `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
   }
+  // M-D-YYYY
   if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(raw)) {
-    const [mo,da,yr] = raw.split('-');
-    return `${yr}-${mo.padStart(2,'0')}-${da.padStart(2,'0')}`;
+    const parts = raw.split('-');
+    return `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
   }
-  try { const d = new Date(raw); if (!isNaN(d)) return d.toISOString().slice(0,10); } catch(e) {}
+  // D/M/YYYY (European) — only if day > 12 making it unambiguous
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(raw)) {
+    const parts = raw.split('/');
+    if (parseInt(parts[0]) > 12) {
+      return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+    }
+  }
+  // "July 5, 2026" or "Jul 5 2026"
+  try {
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
+      const yr = d.getFullYear();
+      const mo = String(d.getMonth() + 1).padStart(2,'0');
+      const da = String(d.getDate()).padStart(2,'0');
+      if (yr > 2000 && yr < 2100) return `${yr}-${mo}-${da}`;
+    }
+  } catch(e) {}
   return null;
 }
 
