@@ -248,11 +248,11 @@ function showTab(name) {
 
 function parseDate(raw) {
   if (!raw) return null;
-  raw = raw.trim().replace(/[^\d\/\-a-zA-Z ,]/g, '');
+  raw = raw.trim();
   if (!raw) return null;
   // YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-  // M/D/YYYY or MM/DD/YYYY (Google Sheets default US format)
+  // M/D/YYYY or MM/DD/YYYY
   if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(raw)) {
     const parts = raw.split('/');
     return `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
@@ -262,21 +262,30 @@ function parseDate(raw) {
     const parts = raw.split('-');
     return `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
   }
-  // D/M/YYYY (European) — only if day > 12 making it unambiguous
-  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(raw)) {
-    const parts = raw.split('/');
-    if (parseInt(parts[0]) > 12) {
-      return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+  // "July 5" or "Jul 5" with no year — infer nearest upcoming year
+  const MONTH_NAMES = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const noYearMatch = raw.match(/^([a-zA-Z]+)\s+(\d{1,2}),?\s*$/);
+  if (noYearMatch) {
+    const mIdx = MONTH_NAMES.findIndex(m => m.startsWith(noYearMatch[1].toLowerCase().slice(0,3)));
+    if (mIdx >= 0) {
+      const day = parseInt(noYearMatch[2]);
+      const now = new Date();
+      let yr = now.getFullYear();
+      const candidate = new Date(yr, mIdx, day);
+      candidate.setHours(0,0,0,0);
+      const today = new Date(); today.setHours(0,0,0,0);
+      if (candidate < today) yr += 1;
+      return `${yr}-${String(mIdx+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     }
   }
-  // "July 5, 2026" or "Jul 5 2026"
+  // "July 5, 2026" with year included
   try {
     const d = new Date(raw);
     if (!isNaN(d.getTime())) {
       const yr = d.getFullYear();
-      const mo = String(d.getMonth() + 1).padStart(2,'0');
-      const da = String(d.getDate()).padStart(2,'0');
-      if (yr > 2000 && yr < 2100) return `${yr}-${mo}-${da}`;
+      if (yr > 2000 && yr < 2100) {
+        return `${yr}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      }
     }
   } catch(e) {}
   return null;
@@ -310,10 +319,10 @@ async function fetchSheet() {
     if (rows.length < 2) { setError('Your sheet appears to be empty. Add some rows with date and property columns.'); return; }
     const header = rows[0].map(h => h.toLowerCase().replace(/[^a-z]/g,''));
     const dateIdx = header.findIndex(h => h.includes('date'));
-    const propIdx = header.findIndex(h => h.includes('prop') || h.includes('property') || h.includes('name'));
-    const notesIdx = header.findIndex(h => h.includes('note') || h.includes('desc') || h.includes('detail'));
+    const propIdx = header.findIndex(h => h.includes('prop') || h.includes('property') || h.includes('location') || h.includes('address'));
+    const notesIdx = header.findIndex(h => h.includes('note') || h.includes('desc') || h.includes('detail') || h.includes('flip'));
     if (dateIdx < 0 || propIdx < 0) {
-      setError('Could not find required columns. Make sure your sheet has headers named "date" and "property".');
+      setError(`Could not find required columns. Headers detected: "${rows[0].join(', ')}". Need a column containing "date" and one containing "property".`);
       return;
     }
     propMap = {};
